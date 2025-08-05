@@ -29,7 +29,8 @@ const GiocatoreStats = mongoose.model('GiocatoreStats', giocatoreStatsSchema);
 const app = express();
 const PORT = 3000;
 const SECRET_KEY = process.env.SECRET_KEY;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fantacoach.vercel.app'
+
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
