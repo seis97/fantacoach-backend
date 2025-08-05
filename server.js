@@ -33,7 +33,23 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fantacoach.vercel.app'
 
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+//app.use(cors({ origin: FRONTEND_URL, credentials: true }));//
+const allowedOrigins = [
+  'http://localhost:5173',         // sviluppo locale Vue
+  'https://fantacoach.vercel.app'  // dominio produzione Vercel
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS non permesso per questa origine: ${origin}`));
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(cookieParser());
 
