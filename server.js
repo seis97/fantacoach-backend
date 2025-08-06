@@ -34,7 +34,7 @@ const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 
 // ✅ Configurazione CORS sicura
 const allowedOrigins = [
-  'http://localhost:5173',
+  
   'https://fantacoach.vercel.app'
 ];
 app.use(cors({
