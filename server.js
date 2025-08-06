@@ -49,6 +49,8 @@ app.use(cors({
   },
   credentials: true
 }));
+// Gestione preflight per tutte le route
+app.options('*', cors());
 
 app.use(express.json());
 app.use(cookieParser());
