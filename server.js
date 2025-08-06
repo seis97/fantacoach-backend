@@ -8,13 +8,6 @@ const cookieParser = require('cookie-parser');
 const axios = require('axios');
 const stripe = require('stripe')(process.env.STRIPE_SECRET);
 
-// ===== DEBUG VARIABILI D'AMBIENTE =====
-console.log("🔍 FRONTEND_URL:", process.env.FRONTEND_URL);
-console.log("🔍 MONGO_URI:", process.env.MONGO_URI ? "[OK]" : "[MANCANTE]");
-console.log("🔍 SECRET_KEY:", process.env.SECRET_KEY ? "[OK]" : "[MANCANTE]");
-console.log("🔍 STRIPE_SECRET:", process.env.STRIPE_SECRET ? "[OK]" : "[MANCANTE]");
-console.log("🔍 API_FOOTBALL_KEY:", process.env.API_FOOTBALL_KEY ? "[OK]" : "[MANCANTE]");
-
 const User = mongoose.model('User', new mongoose.Schema({
   email: String,
   password: String,
@@ -24,10 +17,11 @@ const User = mongoose.model('User', new mongoose.Schema({
 
 const Rosa = require('./models/Rosa');
 
+// 📌 Nuovo modello per cache statistiche giocatori
 const giocatoreStatsSchema = new mongoose.Schema({
   nome: String,
   ruolo: String,
-  dataAggiornamento: String,
+  dataAggiornamento: String, // formato YYYY-MM-DD
   stats: Object
 });
 const GiocatoreStats = mongoose.model('GiocatoreStats', giocatoreStatsSchema);
@@ -35,14 +29,13 @@ const GiocatoreStats = mongoose.model('GiocatoreStats', giocatoreStatsSchema);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET_KEY = process.env.SECRET_KEY;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fantacoach.vercel.app';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fantacoach-frontend.vercel.app';
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 
-// ===== DEBUG REGISTRAZIONE MIDDLEWARE =====
-console.log("➡ Registrazione CORS");
+// ✅ Configurazione CORS sicura
 const allowedOrigins = [
-  'http://localhost:5173',
-  'https://fantacoach.vercel.app'
+  
+  'https://fantacoach-frontend.vercel.app'
 ];
 app.use(cors({
   origin: function (origin, callback) {
@@ -55,19 +48,19 @@ app.use(cors({
   credentials: true
 }));
 
-console.log("➡ Registrazione preflight OPTIONS");
+// Gestione preflight
 app.options('*', cors());
 
-console.log("➡ Registrazione express.json");
+// Middleware base
 app.use(express.json());
-console.log("➡ Registrazione cookieParser");
 app.use(cookieParser());
 
-console.log("➡ Connessione MongoDB");
+// Connessione a MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB connesso'))
   .catch(err => console.error('❌ Errore MongoDB:', err));
 
+// Middleware autenticazione
 function verifyToken(req, res, next) {
   const bearerHeader = req.headers['authorization'];
   if (typeof bearerHeader !== 'undefined') {
@@ -86,8 +79,7 @@ function verifyToken(req, res, next) {
 
 const DEV_EMAILS = ['premium@premium.com'];
 
-// ===== DEBUG REGISTRAZIONE ROUTE =====
-console.log("➡ Registrazione /api/search-player");
+// 📌 Cerca giocatore in Serie A con filtro ruolo
 app.get('/api/search-player', verifyToken, async (req, res) => {
   const query = req.query.query;
   const roleFilter = req.query.role;
@@ -132,33 +124,249 @@ app.get('/api/search-player', verifyToken, async (req, res) => {
   }
 });
 
-// ... (Mantieni tutte le tue altre route identiche, ma aggiungi un console.log prima di ciascuna)
-// Esempio:
-console.log("➡ Registrazione /api/formazionepreview");
-app.post('/api/formazionepreview', verifyToken, async (req, res) => { /* codice originale */ });
+// 📌 Funzione per prendere statistiche con cache
+async function getPlayerStats(nome, ruolo) {
+  const oggi = new Date().toISOString().split('T')[0];
+  const cached = await GiocatoreStats.findOne({ nome, dataAggiornamento: oggi });
+  if (cached) return cached.stats;
 
-console.log("➡ Registrazione /api/register");
-app.post('/api/register', async (req, res) => { /* codice originale */ });
+  try {
+    const res = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/players`, {
+      headers: {
+        'x-rapidapi-host': 'api-football-v1.p.rapidapi.com',
+        'x-rapidapi-key': API_FOOTBALL_KEY
+      },
+      params: { search: nome, season: 2024 }
+    });
 
-console.log("➡ Registrazione /api/login");
-app.post('/api/login', async (req, res) => { /* codice originale */ });
+    const player = res.data.response?.[0]?.statistics?.[0] || {};
+    const stats = {
+      rating: parseFloat(player?.games?.rating) || 0,
+      goals: player?.goals?.total || 0,
+      assists: player?.goals?.assists || 0,
+      shots: player?.shots?.total || 0
+    };
 
-console.log("➡ Registrazione /api/rosa/save");
-app.post('/api/rosa/save', verifyToken, async (req, res) => { /* codice originale */ });
+    await GiocatoreStats.findOneAndUpdate(
+      { nome, dataAggiornamento: oggi },
+      { nome, ruolo, dataAggiornamento: oggi, stats },
+      { upsert: true }
+    );
 
-console.log("➡ Registrazione /api/rosa/all");
-app.get('/api/rosa/all', verifyToken, async (req, res) => { /* codice originale */ });
+    return stats;
+  } catch (err) {
+    console.error(`Errore API per ${nome}:`, err.message);
+    return { rating: 0, goals: 0, assists: 0, shots: 0 };
+  }
+}
 
-console.log("➡ Registrazione /api/rosa/me");
-app.get('/api/rosa/me', verifyToken, async (req, res) => { /* codice originale */ });
+// 📌 Genera formazione AI
+async function generaFormazioneIntelligente(squadra) {
+  const valutazioni = [];
+  for (const g of squadra) {
+    const stats = await getPlayerStats(g.nome, g.ruolo);
+    const punteggio = stats.rating + stats.goals * 2 + stats.assists * 1.5 + stats.shots * 0.2;
+    valutazioni.push({ ...g, punteggio });
+  }
+  valutazioni.sort((a, b) => b.punteggio - a.punteggio);
 
-console.log("➡ Registrazione /api/premium");
-app.post('/api/premium', verifyToken, async (req, res) => { /* codice originale */ });
+  const moduli = {
+    '4-3-3': { POR: 1, DIF: 4, CEN: 3, ATT: 3 },
+    '4-4-2': { POR: 1, DIF: 4, CEN: 4, ATT: 2 },
+    '3-5-2': { POR: 1, DIF: 3, CEN: 5, ATT: 2 }
+  };
 
-console.log("➡ Registrazione /api/create-checkout-session");
-app.post('/api/create-checkout-session', verifyToken, async (req, res) => { /* codice originale */ });
+  let migliorModulo = '4-3-3';
+  let migliorScore = 0;
+  for (const [mod, ruoli] of Object.entries(moduli)) {
+    let score = 0;
+    for (const [ruolo, num] of Object.entries(ruoli)) {
+      const top = valutazioni.filter(g => g.ruolo === ruolo).slice(0, num);
+      score += top.reduce((sum, g) => sum + g.punteggio, 0);
+    }
+    if (score > migliorScore) {
+      migliorScore = score;
+      migliorModulo = mod;
+    }
+  }
 
-// ===== AVVIO SERVER =====
+  const selezionati = [];
+  for (const [ruolo, num] of Object.entries(moduli[migliorModulo])) {
+    const top = valutazioni.filter(g => g.ruolo === ruolo).slice(0, num);
+    selezionati.push(...top);
+  }
+
+  const titolari = selezionati.slice(0, 11);
+  const panchina = valutazioni.filter(g => !titolari.includes(g)).slice(0, 7);
+  return { titolari, panchina, modulo: migliorModulo };
+}
+
+// 📌 API formazione AI
+app.post('/api/formazionepreview', verifyToken, async (req, res) => {
+  const userEmail = req.user.email;
+  const isDev = DEV_EMAILS.includes(userEmail);
+
+  try {
+    const user = await User.findOne({ email: userEmail });
+    if (!user) return res.status(404).json({ errore: 'Utente non trovato.' });
+
+    if (!user.premium && !isDev) {
+      if (user.freeUsages > 0) {
+        user.freeUsages -= 1;
+        await user.save();
+      } else {
+        return res.status(403).json({ errore: 'Hai esaurito le generazioni gratuite. Diventa Premium!' });
+      }
+    }
+
+    const squadra = req.body.squadra;
+    if (!Array.isArray(squadra) || squadra.some(g => !g.nome || !g.ruolo)) {
+      return res.status(400).json({ errore: 'Rosa non valida: assicurati di scegliere i giocatori dai suggerimenti.' });
+    }
+
+    const { titolari, panchina, modulo } = await generaFormazioneIntelligente(squadra);
+    res.json({
+      formazione: titolari.map(g => g.nome),
+      panchina: panchina.map(g => g.nome),
+      modulo
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ errore: 'Errore generazione AI.' });
+  }
+});
+
+// 📌 Registrazione
+app.post('/api/register', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ errore: 'Email e password obbligatori.' });
+
+  const existing = await User.findOne({ email });
+  if (existing) return res.status(400).json({ errore: 'Utente già registrato.' });
+
+  const hashed = bcrypt.hashSync(password, 8);
+  const nuovoUtente = new User({ email, password: hashed });
+  await nuovoUtente.save();
+
+  const token = jwt.sign({ email, premium: false }, SECRET_KEY, { expiresIn: '7d' });
+  res.json({ token, premium: false });
+});
+
+// 📌 Login
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+  const user = await User.findOne({ email });
+  if (!user) return res.status(400).json({ errore: 'Utente non trovato.' });
+
+  const valido = bcrypt.compareSync(password, user.password);
+  if (!valido) return res.status(400).json({ errore: 'Password errata.' });
+
+  const token = jwt.sign({ email: user.email, premium: user.premium }, SECRET_KEY, { expiresIn: '7d' });
+  res.json({ token, premium: user.premium });
+});
+
+// 📌 Salvataggio e gestione rosa
+app.post('/api/rosa/save', verifyToken, async (req, res) => {
+  let { nomeSquadra, modulo, titolari, panchina } = req.body;
+  const userEmail = req.user.email;
+
+  try {
+    const user = await User.findOne({ email: userEmail });
+    if (!user) return res.status(404).json({ errore: 'Utente non trovato.' });
+
+    if (!nomeSquadra || nomeSquadra.trim() === '') {
+      return res.status(400).json({ errore: 'Nome squadra obbligatorio.' });
+    }
+
+    titolari = (titolari || []).map(g => ({ nome: g?.nome || '', ruolo: g?.ruolo || '' }));
+    panchina = (panchina || []).map(g => ({ nome: g?.nome || '', ruolo: g?.ruolo || '' }));
+
+    let rosa = await Rosa.findOne({ userId: user._id, nomeSquadra });
+
+    if (rosa) {
+      rosa.modulo = modulo || '4-3-3';
+      rosa.titolari = titolari;
+      rosa.panchina = panchina;
+      await rosa.save();
+      return res.json({ success: true, message: titolari.length < 11 ? 'Rosa aggiornata (incompleta)' : 'Rosa aggiornata con successo' });
+    }
+
+    await Rosa.create({
+      userId: user._id,
+      nomeSquadra,
+      modulo: modulo || '4-3-3',
+      titolari,
+      panchina
+    });
+
+    res.json({ success: true, message: titolari.length < 11 ? 'Nuova rosa salvata (incompleta)' : 'Nuova rosa salvata con successo' });
+  } catch (err) {
+    console.error("❌ Errore salvataggio rosa:", err);
+    res.status(500).json({ errore: 'Errore salvataggio rosa.' });
+  }
+});
+
+app.get('/api/rosa/all', verifyToken, async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(404).json({ errore: 'Utente non trovato.' });
+
+    const rose = await Rosa.find({ userId: user._id });
+    res.json({ success: true, rose });
+  } catch (err) {
+    res.status(500).json({ errore: 'Errore nel recupero rose.' });
+  }
+});
+
+app.get('/api/rosa/me', verifyToken, async (req, res) => {
+  const user = await User.findOne({ email: req.user.email });
+  const rosa = await Rosa.findOne({ userId: user._id, nomeSquadra: req.query.nomeRosa });
+  if (!rosa) return res.status(404).json({ errore: 'Rosa non trovata.' });
+  res.json({ success: true, rosa });
+});
+
+// 📌 Premium
+app.post('/api/premium', verifyToken, async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(404).json({ errore: 'Utente non trovato.' });
+
+    user.premium = true;
+    await user.save();
+    res.json({ messaggio: '✅ Premium attivato!' });
+  } catch {
+    res.status(500).json({ errore: 'Errore interno.' });
+  }
+});
+
+// 📌 Stripe Checkout
+app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'eur',
+          product_data: {
+            name: 'FantaCoach Premium',
+            description: 'Accesso illimitato a tutte le funzionalità.',
+          },
+          unit_amount: 499,
+        },
+        quantity: 1
+      }],
+      mode: 'payment',
+      success_url: `${FRONTEND_URL}/premium-success`,
+      cancel_url: `${FRONTEND_URL}/premium`
+    });
+
+    res.json({ url: session.url });
+  } catch {
+    res.status(500).json({ errore: 'Errore con Stripe' });
+  }
+});
+
+// Avvio server
 app.listen(PORT, () => {
   console.log(`✅ Backend avviato su http://localhost:${PORT}`);
 });
