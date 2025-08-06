@@ -27,18 +27,16 @@ const giocatoreStatsSchema = new mongoose.Schema({
 const GiocatoreStats = mongoose.model('GiocatoreStats', giocatoreStatsSchema);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const SECRET_KEY = process.env.SECRET_KEY;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fantacoach.vercel.app'
-
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fantacoach.vercel.app';
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 
-//app.use(cors({ origin: FRONTEND_URL, credentials: true }));//
+// ✅ Configurazione CORS sicura
 const allowedOrigins = [
-  'http://localhost:5173',         // sviluppo locale Vue
-  'https://fantacoach.vercel.app'  // dominio produzione Vercel
+  'http://localhost:5173',
+  'https://fantacoach.vercel.app'
 ];
-
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -49,16 +47,20 @@ app.use(cors({
   },
   credentials: true
 }));
-// Gestione preflight per tutte le route
+
+// Gestione preflight
 app.options('*', cors());
 
+// Middleware base
 app.use(express.json());
 app.use(cookieParser());
 
+// Connessione a MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB connesso'))
   .catch(err => console.error('❌ Errore MongoDB:', err));
 
+// Middleware autenticazione
 function verifyToken(req, res, next) {
   const bearerHeader = req.headers['authorization'];
   if (typeof bearerHeader !== 'undefined') {
@@ -75,16 +77,12 @@ function verifyToken(req, res, next) {
   }
 }
 
-
 const DEV_EMAILS = ['premium@premium.com'];
-// 📌 Cerca giocatore da API-Football
 
 // 📌 Cerca giocatore in Serie A con filtro ruolo
 app.get('/api/search-player', verifyToken, async (req, res) => {
   const query = req.query.query;
-  const roleFilter = req.query.role; // "POR", "DIF", "CEN", "ATT"
-
-  console.log("🔍 [Backend] Ricerca:", query, "Ruolo filtro:", roleFilter);
+  const roleFilter = req.query.role;
 
   if (!query || query.length < 2) {
     return res.json({ success: false, players: [] });
@@ -93,13 +91,13 @@ app.get('/api/search-player', verifyToken, async (req, res) => {
   try {
     const response = await axios.get('https://api-football-v1.p.rapidapi.com/v3/players', {
       headers: {
-        'x-rapidapi-key': process.env.API_FOOTBALL_KEY,
+        'x-rapidapi-key': API_FOOTBALL_KEY,
         'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
       },
       params: {
         search: query,
-        league: 135,       // 📌 Solo Serie A
-        season: 2024       // 📌 Stagione corrente
+        league: 135,
+        season: 2024
       }
     });
 
@@ -109,7 +107,6 @@ app.get('/api/search-player', verifyToken, async (req, res) => {
       squadra: p.statistics[0]?.team?.name || 'Sconosciuta'
     }));
 
-    // 📌 Filtro per ruolo (se presente)
     if (roleFilter) {
       const mappaRuoli = {
         POR: ['Goalkeeper'],
@@ -127,21 +124,12 @@ app.get('/api/search-player', verifyToken, async (req, res) => {
   }
 });
 
-
-
-
-
 // 📌 Funzione per prendere statistiche con cache
 async function getPlayerStats(nome, ruolo) {
   const oggi = new Date().toISOString().split('T')[0];
-
-  // 1. Controlla cache
   const cached = await GiocatoreStats.findOne({ nome, dataAggiornamento: oggi });
-  if (cached) {
-    return cached.stats;
-  }
+  if (cached) return cached.stats;
 
-  // 2. Se non in cache, chiama RapidAPI
   try {
     const res = await axios.get(`https://api-football-v1.p.rapidapi.com/v3/players`, {
       headers: {
@@ -159,7 +147,6 @@ async function getPlayerStats(nome, ruolo) {
       shots: player?.shots?.total || 0
     };
 
-    // Salva in cache
     await GiocatoreStats.findOneAndUpdate(
       { nome, dataAggiornamento: oggi },
       { nome, ruolo, dataAggiornamento: oggi, stats },
@@ -173,17 +160,14 @@ async function getPlayerStats(nome, ruolo) {
   }
 }
 
-// 📌 Funzione AI per generare formazione
+// 📌 Genera formazione AI
 async function generaFormazioneIntelligente(squadra) {
   const valutazioni = [];
-
   for (const g of squadra) {
     const stats = await getPlayerStats(g.nome, g.ruolo);
     const punteggio = stats.rating + stats.goals * 2 + stats.assists * 1.5 + stats.shots * 0.2;
     valutazioni.push({ ...g, punteggio });
   }
-
-  // Ordina per punteggio
   valutazioni.sort((a, b) => b.punteggio - a.punteggio);
 
   const moduli = {
@@ -194,8 +178,6 @@ async function generaFormazioneIntelligente(squadra) {
 
   let migliorModulo = '4-3-3';
   let migliorScore = 0;
-
-  // Scegli il miglior modulo
   for (const [mod, ruoli] of Object.entries(moduli)) {
     let score = 0;
     for (const [ruolo, num] of Object.entries(ruoli)) {
@@ -208,7 +190,6 @@ async function generaFormazioneIntelligente(squadra) {
     }
   }
 
-  // Seleziona titolari
   const selezionati = [];
   for (const [ruolo, num] of Object.entries(moduli[migliorModulo])) {
     const top = valutazioni.filter(g => g.ruolo === ruolo).slice(0, num);
@@ -217,11 +198,10 @@ async function generaFormazioneIntelligente(squadra) {
 
   const titolari = selezionati.slice(0, 11);
   const panchina = valutazioni.filter(g => !titolari.includes(g)).slice(0, 7);
-
   return { titolari, panchina, modulo: migliorModulo };
 }
 
-// 📌 Route formazione AI
+// 📌 API formazione AI
 app.post('/api/formazionepreview', verifyToken, async (req, res) => {
   const userEmail = req.user.email;
   const isDev = DEV_EMAILS.includes(userEmail);
@@ -230,7 +210,6 @@ app.post('/api/formazionepreview', verifyToken, async (req, res) => {
     const user = await User.findOne({ email: userEmail });
     if (!user) return res.status(404).json({ errore: 'Utente non trovato.' });
 
-    // Se NON è premium o dev → usa tentativi gratis
     if (!user.premium && !isDev) {
       if (user.freeUsages > 0) {
         user.freeUsages -= 1;
@@ -241,12 +220,9 @@ app.post('/api/formazionepreview', verifyToken, async (req, res) => {
     }
 
     const squadra = req.body.squadra;
-
-// Verifica che ogni giocatore abbia nome e ruolo
-if (!Array.isArray(squadra) || squadra.some(g => !g.nome || !g.ruolo)) {
-  return res.status(400).json({ errore: 'Rosa non valida: assicurati di scegliere i giocatori dai suggerimenti.' });
-}
-
+    if (!Array.isArray(squadra) || squadra.some(g => !g.nome || !g.ruolo)) {
+      return res.status(400).json({ errore: 'Rosa non valida: assicurati di scegliere i giocatori dai suggerimenti.' });
+    }
 
     const { titolari, panchina, modulo } = await generaFormazioneIntelligente(squadra);
     res.json({
@@ -254,13 +230,11 @@ if (!Array.isArray(squadra) || squadra.some(g => !g.nome || !g.ruolo)) {
       panchina: panchina.map(g => g.nome),
       modulo
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ errore: 'Errore generazione AI.' });
   }
 });
-
 
 // 📌 Registrazione
 app.post('/api/register', async (req, res) => {
@@ -291,34 +265,22 @@ app.post('/api/login', async (req, res) => {
   res.json({ token, premium: user.premium });
 });
 
-// 📌 Salva o aggiorna rosa
-// 📌 Salva o aggiorna rosa (accetta anche incomplete)
+// 📌 Salvataggio e gestione rosa
 app.post('/api/rosa/save', verifyToken, async (req, res) => {
   let { nomeSquadra, modulo, titolari, panchina } = req.body;
   const userEmail = req.user.email;
 
   try {
-    // Controllo utente
     const user = await User.findOne({ email: userEmail });
     if (!user) return res.status(404).json({ errore: 'Utente non trovato.' });
 
-    // 📌 Se nome squadra mancante → errore
     if (!nomeSquadra || nomeSquadra.trim() === '') {
       return res.status(400).json({ errore: 'Nome squadra obbligatorio.' });
     }
 
-    // 📌 Normalizza titolari e panchina in modo che abbiano oggetti con {nome, ruolo}
-    titolari = (titolari || []).map(g => ({
-      nome: g?.nome || '',
-      ruolo: g?.ruolo || ''
-    }));
+    titolari = (titolari || []).map(g => ({ nome: g?.nome || '', ruolo: g?.ruolo || '' }));
+    panchina = (panchina || []).map(g => ({ nome: g?.nome || '', ruolo: g?.ruolo || '' }));
 
-    panchina = (panchina || []).map(g => ({
-      nome: g?.nome || '',
-      ruolo: g?.ruolo || ''
-    }));
-
-    // 📌 Trova rosa esistente
     let rosa = await Rosa.findOne({ userId: user._id, nomeSquadra });
 
     if (rosa) {
@@ -326,13 +288,9 @@ app.post('/api/rosa/save', verifyToken, async (req, res) => {
       rosa.titolari = titolari;
       rosa.panchina = panchina;
       await rosa.save();
-      return res.json({
-        success: true,
-        message: titolari.length < 11 ? 'Rosa aggiornata (incompleta)' : 'Rosa aggiornata con successo'
-      });
+      return res.json({ success: true, message: titolari.length < 11 ? 'Rosa aggiornata (incompleta)' : 'Rosa aggiornata con successo' });
     }
 
-    // 📌 Crea nuova rosa
     await Rosa.create({
       userId: user._id,
       nomeSquadra,
@@ -341,17 +299,13 @@ app.post('/api/rosa/save', verifyToken, async (req, res) => {
       panchina
     });
 
-    res.json({
-      success: true,
-      message: titolari.length < 11 ? 'Nuova rosa salvata (incompleta)' : 'Nuova rosa salvata con successo'
-    });
+    res.json({ success: true, message: titolari.length < 11 ? 'Nuova rosa salvata (incompleta)' : 'Nuova rosa salvata con successo' });
   } catch (err) {
     console.error("❌ Errore salvataggio rosa:", err);
     res.status(500).json({ errore: 'Errore salvataggio rosa.' });
   }
 });
 
-// 📌 Recupera rose utente
 app.get('/api/rosa/all', verifyToken, async (req, res) => {
   try {
     const user = await User.findOne({ email: req.user.email });
@@ -364,7 +318,6 @@ app.get('/api/rosa/all', verifyToken, async (req, res) => {
   }
 });
 
-// 📌 Recupera rosa specifica
 app.get('/api/rosa/me', verifyToken, async (req, res) => {
   const user = await User.findOne({ email: req.user.email });
   const rosa = await Rosa.findOne({ userId: user._id, nomeSquadra: req.query.nomeRosa });
@@ -380,7 +333,6 @@ app.post('/api/premium', verifyToken, async (req, res) => {
 
     user.premium = true;
     await user.save();
-
     res.json({ messaggio: '✅ Premium attivato!' });
   } catch {
     res.status(500).json({ errore: 'Errore interno.' });
@@ -414,9 +366,7 @@ app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
   }
 });
 
-
-
-// 📌 Avvio server
+// Avvio server
 app.listen(PORT, () => {
   console.log(`✅ Backend avviato su http://localhost:${PORT}`);
 });
