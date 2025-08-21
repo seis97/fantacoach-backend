@@ -10,19 +10,18 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
-// ===== CORS robust =====
-const ALLOWED_ORIGINS = new Set([
+const ALLOWED_ORIGINS = [
   "https://fantacoach-frontend.vercel.app",
   "http://localhost:5173",
-]);
+];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
-    // riflette l'origine corretta (una sola, non virgole!)
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Vary", "Origin");
   }
+
   res.header("Access-Control-Allow-Credentials", "true");
   res.header(
     "Access-Control-Allow-Headers",
@@ -33,12 +32,14 @@ app.use((req, res, next) => {
     "GET,POST,PUT,PATCH,DELETE,OPTIONS"
   );
 
+  // IMPORTANTE: rispondere con gli header anche agli OPTIONS
   if (req.method === "OPTIONS") {
-    // preflight ok con header CORS presenti
-    return res.sendStatus(204);
+    return res.sendStatus(200); // non 204!
   }
+
   next();
 });
+
 
 
 // ========= CONFIG =========
