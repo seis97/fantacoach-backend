@@ -2,7 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 require("dotenv").config();
-const Stripe = require("stripe");
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 
