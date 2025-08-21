@@ -1,14 +1,25 @@
-// server.js
-require('dotenv').config();
-
-const express = require('express');
-const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
-const cors = require('cors');
-const axios = require('axios');
-const Stripe = require('stripe');
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+require("dotenv").config();
 
 const app = express();
+
+// ✅ Middleware CORS
+app.use(cors({
+  origin: ["http://localhost:5173", "https://fantacoach-frontend.vercel.app"],
+  credentials: true
+}));
+
+// ✅ Gestione preflight (OPTIONS)
+app.options("*", cors({
+  origin: ["http://localhost:5173", "https://fantacoach-frontend.vercel.app"],
+  credentials: true
+}));
+
+app.use(express.json());
+
+// 🔽 da qui in poi lascia invariato il resto del tuo codice
 
 // ========= CONFIG =========
 const PORT = process.env.PORT || 3000;
