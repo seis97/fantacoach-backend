@@ -10,28 +10,25 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
-// Middleware CORS
+// CORS fix
 const allowedOrigins = [
   "https://fantacoach-frontend.vercel.app",
   "http://localhost:5173"
 ];
 
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true,
-}));
-
-// ✅ Gestione esplicita preflight OPTIONS
-app.options("*", cors({
   origin: allowedOrigins,
   credentials: true,
 }));
+
+// ✅ Risponde ai preflight OPTIONS
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", allowedOrigins.join(","));
+  res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.sendStatus(200);
+});
+
 
 
 // 🔽 da qui in poi lascia invariato il resto del tuo codice
