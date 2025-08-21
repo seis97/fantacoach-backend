@@ -664,6 +664,52 @@ app.post('/api/rosa/formazione/genera/:id', verifyToken, canGenerate, async (req
     res.status(500).json({ success: false, errore: 'Errore interno AI.' });
   }
 });
+// ========= AUTH BASE (compatibile col tuo frontend) =========
+// Login: POST /users/login
+app.post("/users/login", async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ success: false, errore: "Email e password obbligatorie." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(401).json({ success: false, errore: "Credenziali non valide." });
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(401).json({ success: false, errore: "Credenziali non valide." });
+
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "7d" });
+    return res.json({ success: true, token });
+  } catch (err) {
+    console.error("❌ Errore login:", err.message);
+    return res.status(500).json({ success: false, errore: "Errore login." });
+  }
+});
+
+// (Opzionale) Registrazione: POST /users/register
+app.post("/users/register", async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ success: false, errore: "Email e password obbligatorie." });
+    }
+
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ success: false, errore: "Utente già registrato." });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    const user = new User({ email, password: hashed });
+    await user.save();
+
+    return res.json({ success: true, message: "Registrazione completata." });
+  } catch (err) {
+    console.error("❌ Errore registrazione:", err.message);
+    return res.status(500).json({ success: false, errore: "Errore registrazione." });
+  }
+});
 
 // ========= STRIPE CHECKOUT PREMIUM =========
 
@@ -710,53 +756,6 @@ app.post('/api/checkout/monthly', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('❌ Errore checkout monthly:', err.message);
     res.status(500).json({ error: 'Errore creazione checkout.' });
-  }
-});
-// ========= AUTH BASE (alias senza /api per compatibilità frontend) =========
-// Usa lo stesso model User già definito nel file
-// Login: POST /users/login
-app.post("/users/login", async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) {
-      return res.status(400).json({ success: false, errore: "Email e password obbligatorie." });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ success: false, errore: "Credenziali non valide." });
-
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ success: false, errore: "Credenziali non valide." });
-
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "7d" });
-    return res.json({ success: true, token });
-  } catch (err) {
-    console.error("❌ Errore login:", err.message);
-    return res.status(500).json({ success: false, errore: "Errore login." });
-  }
-});
-
-// (Opzionale) Registrazione: POST /users/register
-app.post("/users/register", async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) {
-      return res.status(400).json({ success: false, errore: "Email e password obbligatorie." });
-    }
-
-    const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ success: false, errore: "Utente già registrato." });
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
-    const user = new User({ email, password: hashed });
-    await user.save();
-
-    return res.json({ success: true, message: "Registrazione completata." });
-  } catch (err) {
-    console.error("❌ Errore registrazione:", err.message);
-    return res.status(500).json({ success: false, errore: "Errore registrazione." });
   }
 });
 
