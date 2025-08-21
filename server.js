@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 require("dotenv").config();
+const jwt = require("jsonwebtoken");
+const axios = require("axios");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 
@@ -30,7 +32,7 @@ const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.SECRET_KEY || process.env.JWT_SECRET || 'changeme';
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 
 // SOLO SERIE A 2025/26
 const LEAGUE = 135;   // Serie A
