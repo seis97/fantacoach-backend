@@ -10,28 +10,36 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
-// CORS fix
-const allowedOrigins = [
+// ===== CORS robust =====
+const ALLOWED_ORIGINS = new Set([
   "https://fantacoach-frontend.vercel.app",
-  "http://localhost:5173"
-];
+  "http://localhost:5173",
+]);
 
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-}));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    // riflette l'origine corretta (una sola, non virgole!)
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+  }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
 
-// ✅ Risponde ai preflight OPTIONS
-app.options("*", (req, res) => {
-  res.header("Access-Control-Allow-Origin", allowedOrigins.join(","));
-  res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  res.sendStatus(200);
+  if (req.method === "OPTIONS") {
+    // preflight ok con header CORS presenti
+    return res.sendStatus(204);
+  }
+  next();
 });
 
-
-
-// 🔽 da qui in poi lascia invariato il resto del tuo codice
 
 // ========= CONFIG =========
 const PORT = process.env.PORT || 3000;
