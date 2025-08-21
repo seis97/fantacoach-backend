@@ -10,19 +10,29 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
-// ✅ Middleware CORS
+// Middleware CORS
+const allowedOrigins = [
+  "https://fantacoach-frontend.vercel.app",
+  "http://localhost:5173"
+];
+
 app.use(cors({
-  origin: ["http://localhost:5173", "https://fantacoach-frontend.vercel.app"],
-  credentials: true
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, origin);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
 }));
 
-// ✅ Gestione preflight (OPTIONS)
+// ✅ Gestione esplicita preflight OPTIONS
 app.options("*", cors({
-  origin: ["http://localhost:5173", "https://fantacoach-frontend.vercel.app"],
-  credentials: true
+  origin: allowedOrigins,
+  credentials: true,
 }));
 
-app.use(express.json());
 
 // 🔽 da qui in poi lascia invariato il resto del tuo codice
 
