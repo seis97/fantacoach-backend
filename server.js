@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 
@@ -664,8 +664,14 @@ app.post('/api/rosa/formazione/genera/:id', verifyToken, canGenerate, async (req
     res.status(500).json({ success: false, errore: 'Errore interno AI.' });
   }
 });
-// ========= AUTH BASE (compatibile col tuo frontend) =========
-// Login: POST /users/login
+
+// ========= AUTH BASE =========
+// Ping debug
+app.get("/users/ping", (req, res) => {
+  res.json({ ok: true, msg: "users routes alive", time: new Date().toISOString() });
+});
+
+// Login
 app.post("/users/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
@@ -687,7 +693,7 @@ app.post("/users/login", async (req, res) => {
   }
 });
 
-// (Opzionale) Registrazione: POST /users/register
+// Registrazione
 app.post("/users/register", async (req, res) => {
   try {
     const { email, password } = req.body || {};
@@ -710,6 +716,7 @@ app.post("/users/register", async (req, res) => {
     return res.status(500).json({ success: false, errore: "Errore registrazione." });
   }
 });
+
 
 // ========= STRIPE CHECKOUT PREMIUM =========
 
