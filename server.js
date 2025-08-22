@@ -716,6 +716,64 @@ app.post("/users/register", async (req, res) => {
     return res.status(500).json({ success: false, errore: "Errore registrazione." });
   }
 });
+// ========= AUTH: alias multipli per compatibilità =========
+
+// Handler condiviso: REGISTER
+const handleRegister = async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ success: false, errore: "Email e password obbligatorie." });
+    }
+
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ success: false, errore: "Utente già registrato." });
+    }
+
+    const hashed = await bcrypt.hash(password, 10); // usa bcrypt o bcryptjs in base a ciò che hai importato
+    const user = new User({ email, password: hashed });
+    await user.save();
+
+    return res.json({ success: true, message: "Registrazione completata." });
+  } catch (err) {
+    console.error("❌ Errore registrazione:", err.message);
+    return res.status(500).json({ success: false, errore: "Errore registrazione." });
+  }
+};
+
+// Handler condiviso: LOGIN (già lo hai su /users/login, ma aggiungo alias)
+const handleLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ success: false, errore: "Email e password obbligatorie." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(401).json({ success: false, errore: "Credenziali non valide." });
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(401).json({ success: false, errore: "Credenziali non valide." });
+
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "7d" });
+    return res.json({ success: true, token });
+  } catch (err) {
+    console.error("❌ Errore login:", err.message);
+    return res.status(500).json({ success: false, errore: "Errore login." });
+  }
+};
+
+// === Mappa tutte le varianti che il frontend potrebbe chiamare ===
+// REGISTER
+app.post("/users/register", handleRegister);
+app.post("/api/users/register", handleRegister);
+app.post("/api/register", handleRegister); // <— questa è quella che ti manca
+
+// LOGIN (per sicurezza, alias multipli)
+app.post("/users/login", handleLogin);
+app.post("/api/users/login", handleLogin);
+app.post("/api/login", handleLogin);
 
 
 // ========= STRIPE CHECKOUT PREMIUM =========
