@@ -173,11 +173,7 @@ function setCached(k, players) {
   }
 }
 
-// ========= CORS & WEBHOOK (ordine importante) =========
-app.use(cors({
-  origin: ["https://fantacoach-frontend.vercel.app"],
-  credentials: true
-}));
+
 
 // Webhook Stripe DEVE usare il raw parser e va definito PRIMA del json parser
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
