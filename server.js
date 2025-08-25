@@ -140,6 +140,8 @@ function setCached(k, players) {
 }
 
 // ========= CORS & WEBHOOK (ordine importante) =========
+const app = express();
+
 const ALLOWED_ORIGINS = [
   "https://fantacoach-frontend.vercel.app",
   "http://localhost:5173"
