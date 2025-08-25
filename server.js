@@ -139,30 +139,28 @@ function setCached(k, players) {
   }
 }
 
-// ========= CORS & WEBHOOK (ordine importante) =========
-const app = express();
-
+// ---- CORS (UNICO, ROBUSTO) ----
 const ALLOWED_ORIGINS = [
   "https://fantacoach-frontend.vercel.app",
   "http://localhost:5173"
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
+app.use(require("cors")({
+  origin: (origin, cb) => {
+    // consenti Postman/cURL (senza Origin) e le origini in whitelist
+    const allowed = !origin || ALLOWED_ORIGINS.includes(origin);
+    cb(null, allowed);                 // <-- mai cb(new Error(...))
   },
   credentials: true,
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"]
+  allowedHeaders: ["Origin","X-Requested-With","Content-Type","Accept","Authorization"]
 }));
 
-// rispondere subito alle preflight OPTIONS
-app.options("*", cors());
+// Aggiungi Vary per caching corretto dei proxy/CDN
+app.use((req, res, next) => { res.header("Vary", "Origin"); next(); });
 
+// Rispondi alle preflight con 204 (senza corpo)
+app.options("*", (req, res) => res.sendStatus(204));
 
 // Webhook Stripe DEVE usare il raw parser e va definito PRIMA del json parser
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
