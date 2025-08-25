@@ -6,9 +6,42 @@ const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const bcrypt = require("bcryptjs");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+require("dotenv").config();
+const jwt = require("jsonwebtoken");
+const axios = require("axios");
+const bcrypt = require("bcryptjs");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
+// ---- CORS CONFIG ----
+const ALLOWED_ORIGINS = [
+  "https://fantacoach-frontend.vercel.app",
+  "http://localhost:5173"
+];
 
+app.use(cors({
+  origin: (origin, cb) => {
+    const allowed = !origin || ALLOWED_ORIGINS.includes(origin);
+    cb(null, allowed);   // non lanciare errori, solo true/false
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Origin","X-Requested-With","Content-Type","Accept","Authorization"]
+}));
+
+app.use((req, res, next) => {
+  res.header("Vary", "Origin");
+  next();
+});
+
+app.options("*", (req, res) => res.sendStatus(204));
+
+// JSON parser
+app.use(express.json());
 
 
 
@@ -140,28 +173,11 @@ function setCached(k, players) {
   }
 }
 
-// ---- CORS (UNICO, ROBUSTO) ----
-const ALLOWED_ORIGINS = [
-  "https://fantacoach-frontend.vercel.app",
-  "http://localhost:5173"
-];
-
-app.use(require("cors")({
-  origin: (origin, cb) => {
-    // consenti Postman/cURL (senza Origin) e le origini in whitelist
-    const allowed = !origin || ALLOWED_ORIGINS.includes(origin);
-    cb(null, allowed);                 // <-- mai cb(new Error(...))
-  },
-  credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Origin","X-Requested-With","Content-Type","Accept","Authorization"]
+// ========= CORS & WEBHOOK (ordine importante) =========
+app.use(cors({
+  origin: ["https://fantacoach-frontend.vercel.app"],
+  credentials: true
 }));
-
-// Aggiungi Vary per caching corretto dei proxy/CDN
-app.use((req, res, next) => { res.header("Vary", "Origin"); next(); });
-
-// Rispondi alle preflight con 204 (senza corpo)
-app.options("*", (req, res) => res.sendStatus(204));
 
 // Webhook Stripe DEVE usare il raw parser e va definito PRIMA del json parser
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
