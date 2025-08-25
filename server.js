@@ -9,37 +9,7 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 
 
-const app = express();
 
-const ALLOWED_ORIGINS = [
-  "https://fantacoach-frontend.vercel.app",
-  "http://localhost:5173",
-];
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Vary", "Origin");
-  }
-
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-  );
-  res.header(
-    "Access-Control-Allow-Methods",
-    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-  );
-
-  // IMPORTANTE: rispondere con gli header anche agli OPTIONS
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200); // non 204!
-  }
-
-  next();
-});
 
 
 
@@ -170,10 +140,27 @@ function setCached(k, players) {
 }
 
 // ========= CORS & WEBHOOK (ordine importante) =========
+const ALLOWED_ORIGINS = [
+  "https://fantacoach-frontend.vercel.app",
+  "http://localhost:5173"
+];
+
 app.use(cors({
-  origin: ["https://fantacoach-frontend.vercel.app"],
-  credentials: true
+  origin: function (origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"]
 }));
+
+// rispondere subito alle preflight OPTIONS
+app.options("*", cors());
+
 
 // Webhook Stripe DEVE usare il raw parser e va definito PRIMA del json parser
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
